@@ -9,11 +9,47 @@
 #include <errno.h>
 #include <dlfcn.h>
 #include <pthread.h>
+#include <time.h>
+#include <libgen.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
 #define CDS_CHECK_INTERVAL 100  // CDS 센서 체크 간격 (밀리초)
 #define MAX_CLIENTS 32          // 최대 클라이언트 수
+
+// 함수 선언 (forward declaration)
+static char* get_exe_directory(void);
+static const char* get_pid_file_path(void);
+
+// 로그 파일 경로는 실행 파일 디렉토리를 기준으로 동적으로 생성
+static const char* get_log_file_path(void) {
+    static char log_path[2048] = {0};
+    
+    if (log_path[0] == '\0') {
+        char *exe_dir = get_exe_directory();
+        if (exe_dir) {
+            snprintf(log_path, sizeof(log_path), "%s/misc/device_server.log", exe_dir);
+        } else {
+            // fallback: 현재 디렉토리 사용
+            snprintf(log_path, sizeof(log_path), "./misc/device_server.log");
+        }
+    }
+    
+    return log_path;
+}
+
+// 로그 기록용 보조 함수 (데몬은 화면 출력이 안 되므로 필수)
+void log_event(const char *msg) {
+    const char *log_file = get_log_file_path();
+    FILE *fp = fopen(log_file, "a");
+    if (fp) {
+        time_t now = time(NULL);
+        struct tm *t = localtime(&now);
+        fprintf(fp, "[%02d:%02d:%02d] %s\n", t->tm_hour, t->tm_min, t->tm_sec, msg);
+        fclose(fp);
+    }
+}
+
 
 int server_socket = -1;
 volatile int cds_monitor_running = 0;  // CDS 모니터링 스레드 실행 플래그
@@ -90,10 +126,63 @@ static void add_client_to_list(int socket_fd);
 static void remove_client_from_list(int socket_fd);
 static void broadcast_to_clients(const char *message);
 
+// 실행 파일의 디렉토리 경로를 반환 (데몬 프로세스에서 상대 경로 문제 해결)
+static char* get_exe_directory(void) {
+    static char exe_dir[1024] = {0};
+    char full_path[1024];
+    
+    if (exe_dir[0] != '\0') {
+        return exe_dir;  // 이미 계산된 경우 재사용
+    }
+    
+    // 현재 실행 중인 파일의 절대 경로를 가져옴 (/proc/self/exe는 리눅스 전용)
+    ssize_t len = readlink("/proc/self/exe", full_path, sizeof(full_path) - 1);
+    if (len != -1) {
+        full_path[len] = '\0';
+        // dirname은 인자를 수정할 수 있으므로 복사본 사용
+        char *path_copy = strdup(full_path);
+        if (path_copy) {
+            char *dir = dirname(path_copy);
+            if (dir) {
+                strncpy(exe_dir, dir, sizeof(exe_dir) - 1);
+                exe_dir[sizeof(exe_dir) - 1] = '\0';
+            }
+            free(path_copy);  // 메모리 해제
+            if (exe_dir[0] != '\0') {
+                return exe_dir;
+            }
+        }
+    }
+    
+    // 실패 시 현재 작업 디렉토리 사용 (fallback)
+    if (getcwd(exe_dir, sizeof(exe_dir)) != NULL) {
+        return exe_dir;
+    }
+    
+    return NULL;
+}
+
+// PID 파일 경로를 동적으로 생성하는 함수
+static const char* get_pid_file_path(void) {
+    static char pid_path[2048] = {0};
+    
+    if (pid_path[0] == '\0') {
+        char *exe_dir = get_exe_directory();
+        if (exe_dir) {
+            snprintf(pid_path, sizeof(pid_path), "%s/device_server.pid", exe_dir);
+        } else {
+            // fallback
+            snprintf(pid_path, sizeof(pid_path), "./device_server.pid");
+        }
+    }
+    
+    return pid_path;
+}
+
 // ===== 시그널 핸들러 (나중에 데몬 프로세스로 변환할 때 사용) =====
 void signal_handler(int sig) {
     if (sig == SIGTERM || sig == SIGINT) {
-        printf("\n서버 종료 중...\n");
+        log_event("서버 종료 중...");
         
         // CDS 모니터링 스레드 종료
         if (cds_thread_created) {
@@ -114,6 +203,8 @@ void signal_handler(int sig) {
         if (g_libs.device_handle) {
             dlclose(g_libs.device_handle);
         }
+        // PID 파일 삭제
+        unlink(get_pid_file_path());
         exit(0);
     }
 }
@@ -121,7 +212,9 @@ void signal_handler(int sig) {
 static void *load_library(const char *path) {
     void *handle = dlopen(path, RTLD_LAZY);
     if (!handle) {
-        fprintf(stderr, "라이브러리 로드 실패 (%s): %s\n", path, dlerror());
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "라이브러리 로드 실패 (%s): %s", path, dlerror());
+        log_event(log_msg);
     }
     return handle;
 }
@@ -129,10 +222,24 @@ static void *load_library(const char *path) {
 static int load_symbols(DeviceLibs *libs) {
     dlerror(); // 에러 상태 초기화
 
+    // 실행 파일의 디렉토리 경로 얻기
+    char *exe_dir = get_exe_directory();
+    if (!exe_dir) {
+        log_event("실행 파일 디렉토리를 찾을 수 없습니다.");
+        return -1;
+    }
+    
+    // 절대 경로로 라이브러리 경로 구성
+    // 실행 파일이 exec/server에 있으므로, 라이브러리는 exec/lib/에 있음
+    char lib_path[2048];
+    snprintf(lib_path, sizeof(lib_path), "%s/lib/libdevice_manage.so", exe_dir);
+    
     // 통합 장치 라이브러리 로드
-    libs->device_handle = load_library("exec/lib/libdevice_manage.so");
+    libs->device_handle = load_library(lib_path);
     if (!libs->device_handle) {
-        fprintf(stderr, "통합 장치 라이브러리 로드 실패\n");
+        char log_msg[2560];
+        snprintf(log_msg, sizeof(log_msg), "통합 장치 라이브러리 로드 실패: %s", lib_path);
+        log_event(log_msg);
         return -1;
     }
 
@@ -162,7 +269,7 @@ static int load_symbols(DeviceLibs *libs) {
     // 필수 장치 심볼 로딩 확인
     if (!libs->led_on || !libs->led_off || !libs->buzzer_on || !libs->buzzer_off ||
         !libs->segment_display || !libs->sensor_get_value) {
-        fprintf(stderr, "필수 장치 심볼 로딩 실패\n");
+        log_event("필수 장치 심볼 로딩 실패");
         return -1;
     }
     
@@ -346,7 +453,7 @@ static const char *handle_command(DeviceLibs *libs, const char *cmd) {
             // 스레드가 이미 생성되어 있으면 실행 플래그만 활성화
             if (!cds_monitor_running) {
                 cds_monitor_running = 1;
-                printf("CDS 센서 모니터링 재개됨 (상태 초기화)\n");
+                log_event("CDS 센서 모니터링 재개됨 (상태 초기화)");
                 // 재시작 시 상태 초기화를 위해 짧은 대기 후 센서 값 다시 읽기
                 pthread_mutex_unlock(&cds_monitor_mutex);
                 return "SENSOR ON OK\n";
@@ -367,7 +474,7 @@ static const char *handle_command(DeviceLibs *libs, const char *cmd) {
             cds_thread_created = 0; // 이제 확실히 새로 생성 가능한 상태
             pthread_mutex_unlock(&cds_monitor_mutex);
             
-            printf("CDS 센서 모니터링 완전히 종료됨\n");
+            log_event("CDS 센서 모니터링 완전히 종료됨");
             return "SENSOR OFF OK\n";
         }
         pthread_mutex_unlock(&cds_monitor_mutex);
@@ -385,9 +492,11 @@ static void *client_thread(void *arg)
     free(ctx);
 
     char buffer[BUFFER_SIZE];
+    char log_msg[512];
 
-    printf("클라이언트 연결됨: %s:%d\n",
-           inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+    snprintf(log_msg, sizeof(log_msg), "클라이언트 연결됨: %s:%d",
+             inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+    log_event(log_msg);
 
     // 클라이언트 목록에 추가
     add_client_to_list(client_socket);
@@ -401,7 +510,8 @@ static void *client_thread(void *arg)
         }
 
         buffer[bytes_received] = '\0';
-        printf("수신된 메시지: %s\n", buffer);
+        snprintf(log_msg, sizeof(log_msg), "수신된 메시지: %.*s", (int)(sizeof(log_msg) - 30), buffer);
+        log_event(log_msg);
 
         const char *response = handle_command(&g_libs, buffer);
         send(client_socket, response, strlen(response), 0);
@@ -411,8 +521,9 @@ static void *client_thread(void *arg)
     remove_client_from_list(client_socket);
     
     close(client_socket);
-    printf("클라이언트 연결 종료: %s:%d\n",
-           inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+    snprintf(log_msg, sizeof(log_msg), "클라이언트 연결 종료: %s:%d",
+             inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+    log_event(log_msg);
     return NULL;
 }
 
@@ -421,11 +532,11 @@ static void *cds_monitor_thread_func(void *arg)
 {
     (void)arg;  // 사용하지 않는 매개변수 경고 제거
     
-    printf("CDS 센서 모니터링 스레드 시작\n");
+    log_event("CDS 센서 모니터링 스레드 시작");
     
     // 센서 초기화
     if (g_libs.sensor_init && g_libs.sensor_init() < 0) {
-        fprintf(stderr, "CDS 센서 초기화 실패\n");
+        log_event("CDS 센서 초기화 실패");
         return NULL;
     }
     
@@ -445,14 +556,14 @@ static void *cds_monitor_thread_func(void *arg)
                         // 빛이 감지됨 (value == 0) → LED OFF
                         if (g_libs.led_off) {
                             g_libs.led_off();
-                            printf("[CDS 모니터] 빛 감지됨 → LED OFF\n");
+                            log_event("[CDS 모니터] 빛 감지됨 → LED OFF");
                         }
                         snprintf(broadcast_msg, sizeof(broadcast_msg), "CDS_SENSOR: LIGHT_DETECTED (LED OFF)\n");
                     } else {
                         // 빛이 없음 (value == 1) → LED ON
                         if (g_libs.led_on) {
                             g_libs.led_on();
-                            printf("[CDS 모니터] 빛 없음 → LED ON\n");
+                            log_event("[CDS 모니터] 빛 없음 → LED ON");
                         }
                         snprintf(broadcast_msg, sizeof(broadcast_msg), "CDS_SENSOR: NO_LIGHT (LED ON)\n");
                     }
@@ -471,7 +582,7 @@ static void *cds_monitor_thread_func(void *arg)
     
     // 스레드 종료 시 last_value 초기화 (재시작 시 정상 동작을 위해)
     last_value = -1;
-    printf("CDS 센서 모니터링 스레드 종료\n");
+    log_event("CDS 센서 모니터링 스레드 종료");
     return NULL;
 }
 
@@ -481,7 +592,9 @@ static void *segment_countdown_thread_func(void *arg)
     int start_number = *((int *)arg);
     free(arg);  // 메모리 해제
     
-    printf("7SEG 카운트다운 스레드 시작: %d부터 시작\n", start_number);
+    char log_msg[256];
+    snprintf(log_msg, sizeof(log_msg), "7SEG 카운트다운 스레드 시작: %d부터 시작", start_number);
+    log_event(log_msg);
     
     if (start_number < 0) start_number = 0;
     if (start_number > 9) start_number = 9;
@@ -523,33 +636,68 @@ static void *segment_countdown_thread_func(void *arg)
     segment_thread_created = 0;
     pthread_mutex_unlock(&segment_countdown_mutex);
     
-    printf("7SEG 카운트다운 스레드 종료\n");
+    log_event("7SEG 카운트다운 스레드 종료");
     return NULL;
 }
 
 int main(int argc, char *argv[]) {
     (void)argc;  // 사용하지 않는 매개변수 경고 제거
     (void)argv;
-    int client_socket;
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t client_addr_len = sizeof(client_addr);
+
+    // 데몬 프로세스로 전환하기 전에 실행 파일 경로를 먼저 얻어야 함
+    // (daemon() 호출 후에는 작업 디렉토리가 "/"로 변경됨)
+    char *exe_dir = get_exe_directory();
+    if (!exe_dir) {
+        // 데몬 전환 전이므로 stderr에 출력
+        fprintf(stderr, "실행 파일 디렉토리를 찾을 수 없습니다.\n");
+        return 1;
+    }
+
+    // 데몬화 실행
+    // nochdir = 0: 작업 디렉토리를 / (루트)로 변경
+    // noclose = 0: 표준 입출력(stdin, stdout, stderr)을 /dev/null로 리다이렉트
+    if (daemon(0, 0) == -1) {
+        perror("daemon failed");
+        return 1;
+    }
+
+    // 이제부터는 데몬 상태입니다.
+    // 데몬 프로세스의 PID를 파일에 저장 (실행 파일과 같은 디렉토리)
+    const char *pid_path = get_pid_file_path();
+    FILE *pid_fp = fopen(pid_path, "w");
+    if (pid_fp) {
+        fprintf(pid_fp, "%d\n", getpid());
+        fclose(pid_fp);
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "PID 파일 생성 완료: %s", pid_path);
+        log_event(log_msg);
+    } else {
+        char log_msg[512];
+        snprintf(log_msg, sizeof(log_msg), "PID 파일 생성 실패: %s (권한 문제 가능성)", pid_path);
+        log_event(log_msg);
+    }
+    log_event("서버 데몬 프로세스 시작");
 
     // 시그널 핸들러 등록
     signal(SIGTERM, signal_handler);
     signal(SIGINT, signal_handler);
 
-    // 장치 라이브러리 로딩
+    // 장치 라이브러리 로딩 (이미 get_exe_directory()가 호출되어 경로가 저장됨)
     if (load_symbols(&g_libs) < 0) {
-        fprintf(stderr, "장치 라이브러리 로딩 실패. 서버를 종료합니다.\n");
-        return 1;
+        log_event("라이브러리 로드 실패로 종료");
+        exit(1);
     }
 
     // CDS 센서 라이브러리 확인 (스레드는 SENSOR_ON 명령으로 시작)
     if (g_libs.sensor_init && g_libs.sensor_get_value) {
-        printf("CDS 센서 라이브러리 로드됨 (SENSOR_ON 명령으로 모니터링 시작 가능)\n");
+        log_event("CDS 센서 라이브러리 로드됨 (SENSOR_ON 명령으로 모니터링 시작 가능)");
     } else {
-        fprintf(stderr, "경고: CDS 센서 라이브러리가 없어 자동 제어 기능을 사용할 수 없습니다.\n");
+        log_event("경고: CDS 센서 라이브러리가 없어 자동 제어 기능을 사용할 수 없습니다.");
     }
+    
+    int client_socket;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
 
     // 소켓 생성
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -583,7 +731,9 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    printf("서버가 포트 %d에서 대기 중...\n", PORT);
+    char log_msg[256];
+    snprintf(log_msg, sizeof(log_msg), "서버가 포트 %d에서 대기 중...", PORT);
+    log_event(log_msg);
 
     // 클라이언트 연결 대기 및 처리 (각 클라이언트는 스레드로 처리하며, 클라이언트가 끊을 때까지 유지)
     while (1) {

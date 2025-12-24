@@ -37,15 +37,27 @@ TCP를 이용한 원격 장치 제어 프로그램
 
 --------------------------------
 
-## 진행 현황 (2025-12-23 기준)
-- 코드 구조: `code/client`, `code/server`, `code/device_control` (장치별 .so 빌드) 완료
-- 빌드: 상위 Makefile + 하위(device_control) Makefile로 계층형 빌드 구성 (`make`, `make libs`)
-- 장치 라이브러리: LED/부저/7세그/조도 센서 개별 .so 생성 및 wiringPi 연동
-- 서버: `dlopen/dlsym`으로 장치 .so 동적 로딩, 멀티스레드(클라이언트별)로 연결 유지 및 명령 처리
-- 클라이언트: 메뉴 기반 명령 전송 (LED on/off/밝기, BUZZER on/off, SEGMENT, SENSOR)
-- LED: ACTIVE LOW 회로 대응, PWM 밝기 반전 맵핑 적용
-- 권한: PWM 사용 시 `sudo ./exec/server` 권장
-- 남은 작업: 데몬 프로세스화, 센서 자동제어/카운트다운 고도화, 문서/캡처 정리
+## 진행 현황 (2025-12-24 기준)
+- 코드 구조: `code/client`, `code/server`, `code/device_control` (장치별 소스 + 통합 라이브러리) 완료
+- 빌드: 상위 Makefile + 하위(device_control) Makefile로 계층형 빌드 구성 (`make`, `make libs`, `make server`, `make client`)
+- 장치 라이브러리: LED/부저/7세그/조도 센서를 통합한 `libdevice_manage.so` 빌드, `wiringPi` / `wiringPiSetupSys()` 연동
+- 서버:
+  - `dlopen/dlsym`으로 `libdevice_manage.so` 동적 로딩
+  - 클라이언트별 스레드로 동시 접속 처리
+  - CDS 센서 모니터링 전용 스레드: `SENSOR_ON`/`SENSOR_OFF`로 시작·정지, 조도 값에 따라 LED 자동 on/off
+  - 7세그 카운트다운 전용 스레드: `SEGMENT_COUNTDOWN` / `SEGMENT_STOP`, 0 도달 시 부저 자동 울림
+  - CDS 센서 값 변경 시 모든 클라이언트로 브로드캐스트
+  - 실행 파일 기준 절대 경로 계산(`get_exe_directory`)로 데몬에서도 라이브러리/로그/ PID 파일 경로 문제 해결
+  - `daemon(0,0)` 기반 데몬 프로세스 구현, 종료 시그널(SIGINT/SIGTERM)에서 스레드/소켓/라이브러리 정리 및 PID 파일 삭제
+  - 모든 서버 로그를 `exec/misc/device_server.log`에 기록 (`log_event`)
+- 클라이언트:
+  - 메뉴 기반 명령 전송 (LED on/off/밝기, BUZZER on/off, SENSOR ON/OFF, SEGMENT DISPLAY, SEGMENT COUNTDOWN, SEGMENT STOP)
+  - 서버 수신 전용 스레드로 비동기 메시지 처리 (CDS 센서 브로드캐스트, 카운트다운 완료/중단 메시지 출력)
+  - ANSI 컬러 및 입력 라인 보정으로 가독성 향상
+- LED: ACTIVE LOW 회로 대응, PWM 밝기(1/2/3 단계) 제어 구현
+- 권한: `wiringPiSetupSys()` 사용으로 일반 사용자 실행 가능(단, `gpio` 그룹 권한 필요)
+- 데몬 관리 스크립트: `start_server.sh`, `stop_server.sh`로 서버 시작/종료 및 PID 기반 관리
+- 남은 작업: 문서(매뉴얼, running 캡처) 정리 및 제출용 docs 디렉토리 구성
 
 
 --------------------------------

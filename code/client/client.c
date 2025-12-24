@@ -98,8 +98,13 @@ static void *receive_server_messages(void *arg) {
             // 3. 다시 입력 프롬프트 표시 (Select: 문자 뒤에 개행을 넣지 않음)
             printf("Select: ");
             fflush(stdout);
+        
+        } else {
+            printf(ANSI_COLOR_RED "\n[ERROR] 서버와의 연결이 끊겼습니다.\n" ANSI_COLOR_RESET);
+            keep_running = 0;
+            // 메인 루프의 fgets를 깨우기 위해 자기 자신에게 시그널을 보내거나 소켓을 닫음
+            break;
         }
-        // ... 생략 (에러 처리) ...
     }
     return NULL;
 }
@@ -120,11 +125,11 @@ void print_menu() {
     printf(ANSI_COLOR_BLUE "======================================\n");
     printf("       DEVICE CONTROL DASHBOARD       \n");
     printf("======================================\n" ANSI_COLOR_RESET);
-    printf(" 1. LED ON        |  6. SENSOR ON\n");
-    printf(" 2. LED OFF       |  7. SENSOR OFF\n");
-    printf(" 3. Brightness    |  8. SEGMENT DISPLAY\n");
-    printf(" 4. BUZZER ON     |  9. SEGMENT COUNTDOWN\n");
-    printf(" 5. BUZZER OFF    | 10. SEGMENT STOP\n");
+    printf(" 1. LED ON        |  6. CDS SENSOR ON\n");
+    printf(" 2. LED OFF       |  7. CDS SENSOR OFF\n");
+    printf(" 3. LED LEVEL ON  |  8. 7SEGMENT DISPLAY\n");
+    printf(" 4. BUZZER ON     |  9. 7SEGMENT COUNTDOWN\n");
+    printf(" 5. BUZZER OFF    | 10. 7SEGMENT STOP\n");
     printf("--------------------------------------\n");
     printf(" 0. Exit 프로그램 종료\n");
     printf("======================================\n");

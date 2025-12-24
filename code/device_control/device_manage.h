@@ -30,3 +30,5 @@ int sensor_get_value(int *value);
 
 #endif // DEVICE_MANAGE_H
 
+
+
