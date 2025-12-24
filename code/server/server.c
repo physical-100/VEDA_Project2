@@ -20,6 +20,12 @@
 // 함수 선언 (forward declaration)
 static char* get_exe_directory(void);
 static const char* get_pid_file_path(void);
+static void *cds_monitor_thread_func(void *arg);
+static void *segment_countdown_thread_func(void *arg);
+static void *quiz_thread_func(void *arg);
+static void add_client_to_list(int socket_fd);
+static void remove_client_from_list(int socket_fd);
+static void broadcast_to_clients(const char *message);
 
 // 로그 파일 경로는 실행 파일 디렉토리를 기준으로 동적으로 생성
 static const char* get_log_file_path(void) {
@@ -62,6 +68,12 @@ volatile int segment_thread_created = 0;     // 7SEG 카운트다운 스레드 �
 pthread_t segment_countdown_thread;         // 7SEG 카운트다운 스레드 ID
 pthread_mutex_t segment_countdown_mutex = PTHREAD_MUTEX_INITIALIZER;  // 7SEG 카운트다운 제어 뮤텍스
 
+// 퀴즈 기능 상태
+volatile int quiz_running = 0;   // 퀴즈 진행 중 여부
+volatile int quiz_correct = 0;   // 정답 여부
+pthread_t quiz_thread;           // 퀴즈 카운트다운 스레드
+pthread_mutex_t quiz_mutex = PTHREAD_MUTEX_INITIALIZER;  // 퀴즈 상태 보호
+
 // 연결된 클라이언트 목록 관리
 typedef struct ClientList {
     int socket_fd;
@@ -82,6 +94,9 @@ typedef int (*led_set_brightness_t)(int);
 typedef int (*buzzer_init_t)(void);
 typedef int (*buzzer_on_t)(void);
 typedef int (*buzzer_off_t)(void);
+typedef int (*buzzer_warning_t)(void);
+typedef int (*buzzer_emergency_t)(void);
+typedef int (*buzzer_success_t)(void);
 
 typedef int (*segment_init_t)(void);
 typedef int (*segment_display_t)(int);
@@ -103,6 +118,9 @@ typedef struct DeviceLibs {
     buzzer_init_t         buzzer_init;
     buzzer_on_t           buzzer_on;
     buzzer_off_t          buzzer_off;
+    buzzer_warning_t      buzzer_warning;
+    buzzer_emergency_t    buzzer_emergency;
+    buzzer_success_t      buzzer_success;
 
     segment_init_t        segment_init;
     segment_display_t     segment_display;
@@ -122,6 +140,7 @@ typedef struct ClientContext {
 // 함수 선언 (forward declaration)
 static void *cds_monitor_thread_func(void *arg);
 static void *segment_countdown_thread_func(void *arg);
+static void *quiz_thread_func(void *arg);
 static void add_client_to_list(int socket_fd);
 static void remove_client_from_list(int socket_fd);
 static void broadcast_to_clients(const char *message);
@@ -256,6 +275,9 @@ static int load_symbols(DeviceLibs *libs) {
     libs->buzzer_init = (buzzer_init_t)dlsym(libs->device_handle, "buzzer_init");
     libs->buzzer_on   = (buzzer_on_t)dlsym(libs->device_handle, "buzzer_on");
     libs->buzzer_off  = (buzzer_off_t)dlsym(libs->device_handle, "buzzer_off");
+    libs->buzzer_warning   = (buzzer_warning_t)dlsym(libs->device_handle, "buzzer_warning");
+    libs->buzzer_emergency = (buzzer_emergency_t)dlsym(libs->device_handle, "buzzer_emergency");
+    libs->buzzer_success   = (buzzer_success_t)dlsym(libs->device_handle, "buzzer_success");
 
     // 7SEG 함수들
     libs->segment_init      = (segment_init_t)dlsym(libs->device_handle, "segment_init");
@@ -426,6 +448,46 @@ static const char *handle_command(DeviceLibs *libs, const char *cmd) {
         } else {
             pthread_mutex_unlock(&segment_countdown_mutex);
             return "SEGMENT NOT RUNNING\n";
+        }
+    } else if (strncmp(cmd, "QUIZ_START", 10) == 0) {
+        // 퀴즈 시작: 5초 카운트다운 + 부저
+        pthread_mutex_lock(&quiz_mutex);
+        if (quiz_running) {
+            pthread_mutex_unlock(&quiz_mutex);
+            return "QUIZ ALREADY RUNNING\n";
+        }
+        quiz_correct = 0;
+        if (pthread_create(&quiz_thread, NULL, quiz_thread_func, NULL) != 0) {
+            pthread_mutex_unlock(&quiz_mutex);
+            return "QUIZ START FAILED\n";
+        }
+        pthread_detach(quiz_thread);
+        pthread_mutex_unlock(&quiz_mutex);
+        return "QUIZ START: 이 프로젝트의 점수는? (5초 안에 100을 입력하세요!)\n";
+    } else if (strncmp(cmd, "QUIZ_ANSWER", 11) == 0) {
+        // 사용자가 입력한 정답 확인
+        if (!quiz_running) {
+            return "QUIZ NOT RUNNING\n";
+        }
+        // 공백 다음 숫자 파싱
+        const char *arg = cmd + 11;
+        while (*arg == ' ') arg++;
+        int ans = atoi(arg);
+
+        if (ans == 100) {
+            // 정답
+            quiz_correct = 1;
+            return "QUIZ CORRECT: 정답입니다!\n";
+        } else {
+            // 오답: warning 패턴 1회
+            if (libs->buzzer_warning) {
+                libs->buzzer_warning();
+            } else if (libs->buzzer_on && libs->buzzer_off) {
+                libs->buzzer_on();
+                usleep(150000);
+                libs->buzzer_off();
+            }
+            return "QUIZ WRONG: 다시 입력하세요\n";
         }
     } else if (strncmp(cmd, "SENSOR_ON", 9) == 0) {
         // CDS 센서 모니터링 스레드 시작
@@ -637,6 +699,93 @@ static void *segment_countdown_thread_func(void *arg)
     pthread_mutex_unlock(&segment_countdown_mutex);
     
     log_event("7SEG 카운트다운 스레드 종료");
+    return NULL;
+}
+
+// 퀴즈용 7SEG + 부저 카운트다운 스레드 (5초 제한)
+static void *quiz_thread_func(void *arg)
+{
+    (void)arg;
+
+    pthread_mutex_lock(&quiz_mutex);
+    quiz_running = 1;
+    quiz_correct = 0;
+    pthread_mutex_unlock(&quiz_mutex);
+
+    int n = 5;
+    char log_msg[256];
+    snprintf(log_msg, sizeof(log_msg), "퀴즈 시작: %d초 카운트다운", n);
+    log_event(log_msg);
+
+    while (n >= 0) {
+        // 정답 맞춘 경우 즉시 종료
+        if (quiz_correct) {
+            break;
+        }
+
+        // 7SEG 표시
+        if (g_libs.segment_display) {
+            g_libs.segment_display(n);
+        }
+
+        // 부저 패턴: 5~3초는 warning, 2~1초는 emergency
+        if (n > 2) {
+            if (g_libs.buzzer_warning) {
+                g_libs.buzzer_warning();
+            } else if (g_libs.buzzer_on && g_libs.buzzer_off) {
+                g_libs.buzzer_on();
+                usleep(200000);
+                g_libs.buzzer_off();
+            }
+        } else if (n > 0) {
+            if (g_libs.buzzer_emergency) {
+                g_libs.buzzer_emergency();
+            } else if (g_libs.buzzer_on && g_libs.buzzer_off) {
+                g_libs.buzzer_on();
+                usleep(500000);
+                g_libs.buzzer_off();
+            }
+        }
+
+        if (quiz_correct) {
+            break;
+        }
+
+        if (n == 0) {
+            break;
+        }
+
+        sleep(1);   // 1초 간격
+        n--;
+    }
+
+    if (quiz_correct) {
+        // 정답: success 멜로디 (딩동댕)
+        if (g_libs.buzzer_success) {
+            g_libs.buzzer_success();
+        } else if (g_libs.buzzer_on && g_libs.buzzer_off) {
+            // fallback 간단 패턴
+            for (int i = 0; i < 2; ++i) {
+                g_libs.buzzer_on();
+                usleep(200000);
+                g_libs.buzzer_off();
+                usleep(100000);
+            }
+            g_libs.buzzer_on();
+            usleep(500000);
+            g_libs.buzzer_off();
+        }
+        broadcast_to_clients("QUIZ RESULT: CORRECT\n");
+    } else {
+        // 시간 초과
+        broadcast_to_clients("QUIZ RESULT: TIMEOVER\n");
+    }
+
+    pthread_mutex_lock(&quiz_mutex);
+    quiz_running = 0;
+    pthread_mutex_unlock(&quiz_mutex);
+
+    log_event("퀴즈 카운트다운 스레드 종료");
     return NULL;
 }
 

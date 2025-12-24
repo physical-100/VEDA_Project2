@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <wiringPi.h>
 
-#include "wiringLED.h"
+#include "../include/wiringLED.h"
 
 // 핀 번호 정의 (wiringPi 번호 기준, 실제 회로에 맞게 수정 가능)
 #define LED_PIN 26   // 예: GPIO12

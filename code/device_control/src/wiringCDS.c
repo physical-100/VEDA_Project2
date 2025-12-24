@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <wiringPi.h>
 
-#include "wiringCDS.h"
+#include "../include/wiringCDS.h"
 
 // 핀 번호 정의 (wiringPi 번호 기준)
 #define SENSOR_PIN 14   // GPIO11 ())

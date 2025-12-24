@@ -3,13 +3,13 @@
 
 #include <stdio.h>
 #include <wiringPi.h>
-#include "device_manage.h"
+#include "../include/device_manage.h"
 
 // 기존 장치 제어 헤더 포함
-#include "wiringLED.h"
-#include "wiringBuzzer.h"
-#include "wiring7Seg.h"
-#include "wiringCDS.h"
+#include "../include/wiringLED.h"
+#include "../include/wiringBuzzer.h"
+#include "../include/wiring7Seg.h"
+#include "../include/wiringCDS.h"
 
 // wiringPi 초기화를 한 번만 수행하기 위한 전역 플래그
 static int wiringpi_global_init = 0;

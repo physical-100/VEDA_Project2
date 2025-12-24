@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <wiringPi.h>
 
-#include "wiring7Seg.h"
-#include "wiringBuzzer.h"
+#include "../include/wiring7Seg.h"
+#include "../include/wiringBuzzer.h"
 
 // 핀 번호 정의 (wiringPi 번호 기준)
 #define SEGMENT_PIN_A  15

@@ -131,6 +131,8 @@ void print_menu() {
     printf(" 4. BUZZER ON     |  9. 7SEGMENT COUNTDOWN\n");
     printf(" 5. BUZZER OFF    | 10. 7SEGMENT STOP\n");
     printf("--------------------------------------\n");
+    printf("11. QUIZ (프로젝트 점수 맞추기)\n");
+    printf("--------------------------------------\n");
     printf(" 0. Exit 프로그램 종료\n");
     printf("======================================\n");
     printf("Select: ");
@@ -242,6 +244,25 @@ int main(int argc, char *argv[]) {
                 break;
             case 10:
                 send_command("SEGMENT_STOP\n");
+                break;
+            case 11:
+                {
+                    // 퀴즈 시작
+                    send_command("QUIZ_START\n");
+                    while (1) {
+                        char answer[BUFFER_SIZE];
+                        printf("이 프로젝트의 점수는? (정수 입력, 예: 100, 종료하려면 빈 줄): ");
+                        if (!fgets(answer, sizeof(answer), stdin)) {
+                            break;
+                        }
+                        // 빈 줄이면 퀴즈 입력 종료
+                        if (answer[0] == '\n') {
+                            break;
+                        }
+                        snprintf(input, sizeof(input), "QUIZ_ANSWER %s", answer);
+                        send_command(input);
+                    }
+                }
                 break;
             default:
                 printf("잘못된 선택입니다.\n");

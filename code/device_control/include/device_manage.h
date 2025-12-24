@@ -18,6 +18,9 @@ int led_set_brightness(int level);  // 1: 최저, 2: 중간, 3: 최대
 int buzzer_init(void);
 int buzzer_on(void);
 int buzzer_off(void);
+int buzzer_warning(void);
+int buzzer_emergency(void);
+int buzzer_success(void);
 
 // ===== 7세그먼트 제어 =====
 int segment_init(void);

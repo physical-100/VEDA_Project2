@@ -4,8 +4,8 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -g -fPIC
-
-SRC_DIR = .
+INCLUDE_DIR = include
+SRC_DIR = src
 OUT_DIR = ../../exec/lib
 
 # 모든 소스 파일 포함 (기존 파일들 + device_manage.c)
@@ -28,7 +28,7 @@ $(OUT_DIR):
 
 $(DEVICE_MANAGE_LIB): $(DEVICE_SOURCES) | $(OUT_DIR)
 	# softTone 이 별도 라이브러리인 경우와 wiringPi 안에 포함된 경우를 모두 고려
-	$(CC) $(CFLAGS) -shared -o $@ $(DEVICE_SOURCES) -lwiringPi -lsoftTone || $(CC) $(CFLAGS) -shared -o $@ $(DEVICE_SOURCES) -lwiringPi
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -shared -o $@ $(DEVICE_SOURCES) -lwiringPi -lsoftTone || $(CC) $(CFLAGS) -I$(INCLUDE_DIR) -shared -o $@ $(DEVICE_SOURCES) -lwiringPi
 	@echo "[device_control] 통합 장치 라이브러리 빌드 완료: $@"
 
 clean:
