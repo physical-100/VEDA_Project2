@@ -122,9 +122,12 @@ make check
 
 ### 서버 실행 (라즈베리파이 4)
 ```bash
-./exec/server
+./start_server.sh
 ```
-
+### 서버 종료 (라즈베리파이 4)
+```bash
+  ./stop_server.sh
+```
 ### 클라이언트 실행 (우분투 리눅스)
 ```bash
 # 기본 (localhost:8080)
@@ -136,6 +139,7 @@ make check
 # 서버 IP와 포트 지정
 ./exec/client <서버_IP> <포트>
 ```
+
 
 ## 구현 상태
 
@@ -156,7 +160,7 @@ make check
 - [x] `code/device_control/Makefile` 을 이용한 계층형 빌드 구성
 
 ### 3단계: 서버 구현
-- [ ] 데몬 프로세스로 변환
+- [x] 데몬 프로세스로 변환
 - [x] 멀티 프로세스/스레드 구조 -> 7segment , CDS
 - [x] 동적 라이브러리 로딩 (`dlopen/dlsym` 으로 장치별 `.so` 로딩)
 - [x] 클라이언트 명령 문자열과 장치 제어 함수 매핑 (기본 동작 완료)
