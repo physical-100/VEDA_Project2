@@ -11,10 +11,7 @@ static int sensor_initialized = 0;
 int sensor_init(void)
 {
     if (!sensor_initialized) {
-        if (wiringPiSetup() == -1) {
-            fprintf(stderr, "wiringPi 초기화 실패 (CDS)\n");
-            return -1;
-        }
+        // wiringPiSetup()은 device_init_all()에서 호출됨
         pinMode(SENSOR_PIN, INPUT);
         sensor_initialized = 1;
     }

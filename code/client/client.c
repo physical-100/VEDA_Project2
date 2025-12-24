@@ -6,17 +6,31 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <pthread.h>
 
 #define BUFFER_SIZE 1024
 
+// 색상 정의
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 int client_socket = -1;
 volatile sig_atomic_t keep_running = 1;
+pthread_t receive_thread;  // 서버 메시지 수신 스레드
 
 // 시그널 핸들러 (SIGINT만 종료)
 void signal_handler(int sig) {
     if (sig == SIGINT) {
         printf("\n프로그램을 종료합니다...\n");
         keep_running = 0;
+        if (client_socket != -1) {
+            shutdown(client_socket, SHUT_RDWR);  // 소켓을 닫아서 recv가 반환되도록
+        }
+        // 스레드가 종료될 시간을 주기 위해 잠시 대기
+        usleep(100000);  // 0.1초
         if (client_socket != -1) {
             close(client_socket);
         }
@@ -57,45 +71,65 @@ int connect_to_server(const char *server_ip, int port) {
     return 0;
 }
 
-int send_command(const char *command) {
+// 서버 메시지 수신 스레드: 서버로부터 오는 모든 메시지를 지속적으로 수신
+static void *receive_server_messages(void *arg) {
+    (void)arg;
     char buffer[BUFFER_SIZE];
     
+    while (keep_running && client_socket != -1) {
+        memset(buffer, 0, BUFFER_SIZE);
+        int bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+        
+        if (bytes_received > 0) {
+            buffer[bytes_received] = '\0';
+
+            // 1. 현재 입력 프롬프트 지우기 (\r: 맨앞으로, \033[2K: 줄 지우기)
+            printf("\r\033[2K"); 
+
+            // 2. 서버 메시지 꾸며서 출력
+            if (strstr(buffer, "COMPLETE")) {
+                printf(ANSI_COLOR_GREEN "[SERVER] ✔ %s" ANSI_COLOR_RESET, buffer);
+            } else if (strstr(buffer, "CDS_SENSOR")) {
+                printf(ANSI_COLOR_YELLOW "[EVENT] 🔔 %s" ANSI_COLOR_RESET, buffer);
+            } else {
+                printf(ANSI_COLOR_BLUE "[INFO] %s" ANSI_COLOR_RESET, buffer);
+            }
+
+            // 3. 다시 입력 프롬프트 표시 (Select: 문자 뒤에 개행을 넣지 않음)
+            printf("Select: ");
+            fflush(stdout);
+        }
+        // ... 생략 (에러 처리) ...
+    }
+    return NULL;
+}
+
+int send_command(const char *command) {
     if (send(client_socket, command, strlen(command), 0) < 0) {
         perror("명령 전송 실패");
         return -1;
     }
-    
-    // 서버 응답 수신
-    memset(buffer, 0, BUFFER_SIZE);
-    int bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
-    
-    if (bytes_received > 0) {
-        buffer[bytes_received] = '\0';
-        printf("서버 응답: %s", buffer);
-    } else if (bytes_received == 0) {
-        printf("서버 연결이 끊어졌습니다.\n");
-        return -1;
-    } else {
-        perror("응답 수신 실패");
-        return -1;
-    }
-    
+    // 응답은 receive_server_messages 스레드에서 처리
     return 0;
 }
 
 void print_menu() {
-    printf("\n[ Device Control Menu ]\n");
-    printf("1. LED ON\n");
-    printf("2. LED OFF\n");
-    printf("3. Set Brightness\n");
-    printf("4. BUZZER ON (play melody)\n");
-    printf("5. BUZZER OFF (stop)\n");
-    printf("6. SENSOR ON (감시 시작)\n");
-    printf("7. SENSOR OFF (감시 종료)\n");
-    printf("8. SEGMENT DISPLAY (숫자 표시 후 카운트다운)\n");
-    printf("9. SEGMENT STOP (카운트다운 중단)\n");
-    printf("0. Exit\n");
-    printf("\nSelect: ");
+    // \033[H\033[J : 화면을 지우고 커서를 맨 위로 (필요 시 주석 해제)
+    printf("\033[H\033[J"); 
+
+    printf(ANSI_COLOR_BLUE "======================================\n");
+    printf("       DEVICE CONTROL DASHBOARD       \n");
+    printf("======================================\n" ANSI_COLOR_RESET);
+    printf(" 1. LED ON        |  6. SENSOR ON\n");
+    printf(" 2. LED OFF       |  7. SENSOR OFF\n");
+    printf(" 3. Brightness    |  8. SEGMENT DISPLAY\n");
+    printf(" 4. BUZZER ON     |  9. SEGMENT COUNTDOWN\n");
+    printf(" 5. BUZZER OFF    | 10. SEGMENT STOP\n");
+    printf("--------------------------------------\n");
+    printf(" 0. Exit 프로그램 종료\n");
+    printf("======================================\n");
+    printf("Select: ");
+    fflush(stdout);
 }
 
 int main(int argc, char *argv[]) {
@@ -119,6 +153,13 @@ int main(int argc, char *argv[]) {
     
     // 서버에 연결
     if (connect_to_server(server_ip, port) < 0) {
+        return 1;
+    }
+    
+    // 서버 메시지 수신 스레드 시작
+    if (pthread_create(&receive_thread, NULL, receive_server_messages, NULL) != 0) {
+        perror("수신 스레드 생성 실패");
+        close(client_socket);
         return 1;
     }
     
@@ -146,10 +187,22 @@ int main(int argc, char *argv[]) {
             case 3:
                 {
                     char brightness[BUFFER_SIZE];
-                    printf("밝기 선택 (1:최저, 2:중간, 3:최대): ");
-                    fgets(brightness, sizeof(brightness), stdin);
-                    snprintf(input, sizeof(input), "LED_BRIGHTNESS %s", brightness);
-                    send_command(input);
+                    int brightness_level;
+                    int valid_input = 0;
+                    
+                    while (!valid_input) {
+                        printf("밝기 선택 (1:최저, 2:중간, 3:최대): ");
+                        fgets(brightness, sizeof(brightness), stdin);
+                        brightness_level = atoi(brightness);
+                        
+                        if (brightness_level >= 1 && brightness_level <= 3) {
+                            valid_input = 1;
+                            snprintf(input, sizeof(input), "LED_BRIGHTNESS %d\n", brightness_level);
+                            send_command(input);
+                        } else {
+                            printf(ANSI_COLOR_RED "잘못된 입력입니다. 1, 2, 3 중 하나를 선택해주세요.\n" ANSI_COLOR_RESET);
+                        }
+                    }
                 }
                 break;
             case 4:
@@ -174,6 +227,15 @@ int main(int argc, char *argv[]) {
                 }
                 break;
             case 9:
+                {
+                    char number[BUFFER_SIZE];
+                    printf("카운트다운 시작 숫자 입력 (0-9): ");
+                    fgets(number, sizeof(number), stdin);
+                    snprintf(input, sizeof(input), "SEGMENT_COUNTDOWN %s", number);
+                    send_command(input);
+                }
+                break;
+            case 10:
                 send_command("SEGMENT_STOP\n");
                 break;
             default:
@@ -181,6 +243,12 @@ int main(int argc, char *argv[]) {
                 break;
         }
     }
+    
+    // 수신 스레드 종료 대기
+    if (client_socket != -1) {
+        shutdown(client_socket, SHUT_RDWR);  // 소켓을 닫아서 recv가 반환되도록
+    }
+    pthread_join(receive_thread, NULL);
     
     close(client_socket);
     return 0;

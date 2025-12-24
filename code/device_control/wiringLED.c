@@ -4,17 +4,14 @@
 #include "wiringLED.h"
 
 // 핀 번호 정의 (wiringPi 번호 기준, 실제 회로에 맞게 수정 가능)
-#define LED_PIN 5   // 예: GPIO24
+#define LED_PIN 26   // 예: GPIO12
 
 static int led_initialized = 0;
 
 int led_init(void)
 {
     if (!led_initialized) {
-        if (wiringPiSetup() == -1) {
-            fprintf(stderr, "wiringPi 초기화 실패 (LED)\n");
-            return -1;
-        }
+        // wiringPiSetup()은 device_init_all()에서 호출됨
         pinMode(LED_PIN, PWM_OUTPUT); // PWM을 사용하여 밝기 조절
         pwmSetMode(PWM_MODE_MS);
         pwmSetRange(1024);

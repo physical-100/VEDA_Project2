@@ -12,10 +12,7 @@ static int buzzer_initialized = 0;
 int buzzer_init(void)
 {
     if (!buzzer_initialized) {
-        if (wiringPiSetup() == -1) {
-            fprintf(stderr, "wiringPi 초기화 실패 (BUZZER)\n");
-            return -1;
-        }
+        // wiringPiSetup()은 device_init_all()에서 호출됨
         if (softToneCreate(BUZZER_PIN) != 0) {
             fprintf(stderr, "부저 softToneCreate 실패\n");
             return -1;

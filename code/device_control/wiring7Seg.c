@@ -36,10 +36,7 @@ static int segment_numbers[10][4] = {
 int segment_init(void)
 {
     if (!segment_initialized) {
-        if (wiringPiSetup() == -1) {
-            fprintf(stderr, "wiringPi 초기화 실패 (7SEG)\n");
-            return -1;
-        }
+        // wiringPiSetup()은 device_init_all()에서 호출됨
         for (int i = 0; i < 4; ++i) {
             pinMode(segment_pins[i], OUTPUT);
             digitalWrite(segment_pins[i], LOW);
@@ -78,16 +75,16 @@ int segment_countdown(int start)
     if (start < 0) start = 0;
     if (start > 9) start = 9;
 
-    for (int n = start; n >= 0; --n) {
+    for (int n = start; n > 0; --n) {
         segment_display(n);
         delay(1000); // 1초 대기
+        
     }
-
-    // // 0이 되었을 때 부저 울림
-    // buzzer_on();
-    // delay(500);
-    // buzzer_off();
-
+    segment_display(0);
+    // 0이 되었을 때 부저 울림
+    buzzer_on();
+    delay(500);
+    buzzer_off();
     // 표시 정리
     segment_clear();
     return 0;
