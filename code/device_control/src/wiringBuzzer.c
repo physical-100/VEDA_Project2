@@ -28,29 +28,24 @@ int buzzer_init(void) {
     return 0;
 }
 
-// 1. Warning: 낮고 짧은 경고음 (삐- 삐- 삐-)
+// 1. Warning: 낮고 짧은 경고음 (삐-)
 int buzzer_warning(void) {
     if (buzzer_init() < 0) return -1;
     
-    for(int i = 0; i < 2; i++) {
-        softToneWrite(BUZZER_PIN, 440); // 라(A4) 음
-        usleep(200000);                // 0.2초 소리
-        softToneWrite(BUZZER_PIN, 0);
-        usleep(100000);                // 0.1초 쉼
-    }
+    // 0.2초 짧은 경고음
+    softToneWrite(BUZZER_PIN, 440); // 라(A4) 음
+    usleep(200000);                // 0.2초 소리
+    softToneWrite(BUZZER_PIN, 0);
     return 0;
 }
 
-// 2. Emergency: 높은 음의 비상 사이렌 (삐용- 삐용-)
+// 2. Emergency: 높은 음의 비상 사이렌 (0.2초)
 int buzzer_emergency(void) {
     if (buzzer_init() < 0) return -1;
     
-    for(int i = 0; i < 3; i++) {
-        softToneWrite(BUZZER_PIN, 880); // 높은 라
-        usleep(300000);
-        softToneWrite(BUZZER_PIN, 523); // 도
-        usleep(300000);
-    }
+    // 0.2초 비상 사이렌
+    softToneWrite(BUZZER_PIN, 880); // 높은 라
+    usleep(200000);                // 0.2초 소리
     softToneWrite(BUZZER_PIN, 0);
     return 0;
 }
@@ -69,6 +64,22 @@ int buzzer_success(void) {
     softToneWrite(BUZZER_PIN, 0);
     return 0;
 }
+//4. fail : 낮은 쿠쿵 소리
+int buzzer_fail(void) {
+    if (buzzer_init() < 0) return -1;
+    
+    // 높은 음에서 낮은 음으로 (띠-로-리-)
+    int notes[] = {330, 262, 196}; // 미 - 도 - 솔(낮은)
+    int durations[] = {200000, 200000, 400000};
+    
+    for(int i = 0; i < 3; i++) {
+        softToneWrite(BUZZER_PIN, notes[i]);
+        usleep(durations[i]);
+    }
+    softToneWrite(BUZZER_PIN, 0);
+    return 0;
+}
+
 
 // 기존 기본 함수들
 int buzzer_on(void) {

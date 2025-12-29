@@ -1,196 +1,218 @@
-# TCP 원격 장치 제어 프로그램
+# TCP 원격 장치 제어 프로그램 - 코드 구조
 
 ## 프로젝트 구조
 
 ```
-├── code/
-│ ├── client/ # 클라이언트 소스 코드
-│ │ └── client.c
-│ ├── server/ # 서버 소스 코드
-│ │ └── server.c
-│ └── device_control/ # 장치 제어 통합 라이브러리 소스 + 하위 Makefile
-│ ├── include/ # 장치 제어용 헤더 모음
-│ │ ├── device_manage.h # 통합 장치 제어 헤더
-│ │ ├── wiringLED.h # LED 제어
-│ │ ├── wiringBuzzer.h # 부저 제어
-│ │ ├── wiring7Seg.h # 7세그먼트 제어
-│ │ └── wiringCDS.h # 조도(CDS) 센서 제어
-│ ├── src/ # 장치 제어 소스 코드
-│ │ ├── device_manage.c # 통합 장치 제어 구현 (단일 .so로 빌드)
-│ │ ├── wiringLED.c
-│ │ ├── wiringBuzzer.c
-│ │ ├── wiring7Seg.c
-│ │ └── wiringCDS.c
-│ └── Makefile # 장치 라이브러리 전용 빌드 스크립트
-├── exec/ # 실행 파일 및 라이브러리
-│ ├── client # 클라이언트 실행 파일
-│ ├── server # 서버 실행 파일
-│ ├── lib/
-│ │ └── libdevice_manage.so # 통합 장치 제어 라이브러리
-│ └── misc/
-│ └── device_server.log # 서버 데몬 로그 파일
-├── docs/ # 문서
-├── Makefile # 상위 빌드 스크립트 (클라이언트/서버 + 하위 Make 호출)
-└── README.md # 프로젝트 설명
+code/
+├── client/              # 클라이언트 소스 코드
+│   └── client.c        # 클라이언트 메인 소스
+├── server/             # 서버 소스 코드
+│   └── server.c        # 서버 메인 소스
+└── device_control/     # 장치 제어 통합 라이브러리
+    ├── include/        # 헤더 파일
+    │   ├── device_manage.h  # 통합 장치 제어 헤더
+    │   ├── wiringLED.h     # LED 제어 헤더
+    │   ├── wiringBuzzer.h  # 부저 제어 헤더
+    │   ├── wiring7Seg.h    # 7세그먼트 제어 헤더
+    │   └── wiringCDS.h     # 조도 센서 제어 헤더
+    ├── src/            # 소스 파일
+    │   ├── device_manage.c  # 통합 장치 제어 구현
+    │   ├── wiringLED.c      # LED 제어 구현
+    │   ├── wiringBuzzer.c   # 부저 제어 구현
+    │   ├── wiring7Seg.c     # 7세그먼트 제어 구현
+    │   └── wiringCDS.c      # 조도 센서 제어 구현
+    └── Makefile        # 장치 라이브러리 빌드 스크립트
 ```
 
-## 빌드 방법 (계층형 Makefile)
+## 빌드 방법
 
+### 전체 빌드
 ```bash
-# 전체 빌드 (클라이언트, 서버, 장치 제어 라이브러리)
+# 프로젝트 루트에서
 make
+```
 
-# 장치 제어 라이브러리만 빌드
-make libs        # 내부적으로 `make -C code/device_control libs` 호출
+### 개별 빌드
+```bash
+# 장치 라이브러리만 빌드
+make libs
 
-# 정리
+# 클라이언트만 빌드
+make client
+
+# 서버만 빌드
+make server
+```
+
+### 정리
+```bash
 make clean
-
-# 재빌드
-make rebuild
-
-# 빌드된 실행 파일/라이브러리 확인
-make check
 ```
 
-### `code/device_control/Makefile`
+## 장치 제어 통합 라이브러리 (`libdevice_manage.so`)
 
-- 역할: `wiringLED / wiringBuzzer / wiring7Seg / wiringCDS / device_manage` 를 **단일 통합 라이브러리**(`libdevice_manage.so`)로 빌드
-- 주요 타겟:
-  - `make -C code/device_control libs` → `exec/lib/libdevice_manage.so` 생성
-  - `make -C code/device_control clean` → 통합 라이브러리 삭제
+### 빌드 결과
+- 위치: `exec/lib/libdevice_manage.so`
+- 모든 장치 제어 함수를 하나의 동적 라이브러리로 통합
 
-## 장치 제어 통합 라이브러리 구조 (`libdevice_manage.so`)
+### 1. LED 제어 (`wiringLED`)
+**파일**: `src/wiringLED.c`, `include/wiringLED.h`
 
-### 1) LED (`wiringLED`)
-- 파일: `code/device_control/src/wiringLED.c`, `code/device_control/include/wiringLED.h`
-- 빌드 결과: 통합 라이브러리 `exec/lib/libdevice_manage.so` 내부에 포함
-- 사용 라이브러리: `wiringPi`
-- 제공 함수:
-  - `int led_init(void);`
-  - `int led_on(void);`
-  - `int led_off(void);`
-  - `int led_set_brightness(int level);   // 1: 최저, 2: 중간, 3: 최대`
+**제공 함수**:
+- `int led_init(void)` - LED 초기화
+- `int led_on(void)` - LED 켜기
+- `int led_off(void)` - LED 끄기
+- `int led_set_brightness(int level)` - 밝기 설정 (1: 최저, 2: 중간, 3: 최대)
 
-### 2) 부저 (`wiringBuzzer`)
-- 파일: `code/device_control/src/wiringBuzzer.c`, `code/device_control/include/wiringBuzzer.h`
-- 빌드 결과: 통합 라이브러리 `exec/lib/libdevice_manage.so` 내부에 포함
-- 사용 라이브러리: `wiringPi` (+ 환경에 따라 `softTone` 포함)
-- 제공 함수:
-  - `int buzzer_init(void);`
-  - `int buzzer_on(void);`
-  - `int buzzer_off(void);`
+**특징**:
+- ACTIVE LOW 회로 대응
+- PWM을 이용한 밝기 제어
 
-### 3) 7세그먼트 (`wiring7Seg`)
-- 파일: `code/device_control/src/wiring7Seg.c`, `code/device_control/include/wiring7Seg.h`
-- 빌드 결과: 통합 라이브러리 `exec/lib/libdevice_manage.so` 내부에 포함
-- 사용 라이브러리: `wiringPi`
-- 제공 함수:
-  - `int segment_init(void);`
-  - `int segment_display(int number);`   // 0~9
-  - `int segment_countdown(int start);`  // start → 0, 1초 간격, 0에서 부저 연동
+### 2. 부저 제어 (`wiringBuzzer`)
+**파일**: `src/wiringBuzzer.c`, `include/wiringBuzzer.h`
 
-### 4) 조도 센서 (`wiringCDS`)
-- 파일: `code/device_control/src/wiringCDS.c`, `code/device_control/include/wiringCDS.h`
-- 빌드 결과: 통합 라이브러리 `exec/lib/libdevice_manage.so` 내부에 포함
-- 사용 라이브러리: `wiringPi`
-- 제공 함수:
-  - `int sensor_init(void);`
-  - `int sensor_get_value(int *value);`  // 디지털 입력 기반 값 읽기
+**제공 함수**:
+- `int buzzer_init(void)` - 부저 초기화
+- `int buzzer_on(void)` - 부저 켜기
+- `int buzzer_off(void)` - 부저 끄기
+- `int buzzer_warning(void)` - 경고음 (0.2초)
+- `int buzzer_emergency(void)` - 비상음 (0.2초)
+- `int buzzer_success(void)` - 성공음
+- `int buzzer_fail(void)` - 실패음
 
-### 5) 통합 관리 (`device_manage`)
-- 파일: `code/device_control/src/device_manage.c`, `code/device_control/include/device_manage.h`
-- 역할:
-  - `int device_init_all(void);` : `wiringPiSetupSys()`를 1회 호출해 전체 장치 공통 초기화
-  - LED/BUZZER/7SEG/CDS 함수 시그니처를 한 헤더에 모아 서버에서 한 번에 `dlsym` 가능하도록 제공
-  - 장치 간 상호작용(예: 7세그 카운트다운 0에서 부저 울림)을 위한 허브 역할
+**특징**:
+- `softTone`을 이용한 주파수 제어
+- 퀴즈 기능에서 다양한 소리 패턴 사용
 
-## 서버에서의 동적 로딩 구조
+### 3. 7세그먼트 제어 (`wiring7Seg`)
+**파일**: `src/wiring7Seg.c`, `include/wiring7Seg.h`
 
+**제공 함수**:
+- `int segment_init(void)` - 7세그먼트 초기화
+- `int segment_display(int number)` - 숫자 표시 (0~9)
+- `int segment_off(void)` - 7세그먼트 끄기
 
-### dlopen/dlsym 기반 장치 로딩
+**특징**:
+- 4자리 7세그먼트 디스플레이 지원
+- 카운트다운 기능은 서버에서 스레드로 구현
 
-- 서버(`server.c`)는 시작 시 다음 순서로 장치 라이브러리를 로딩합니다.
-  1. `dlopen("exec/lib/libdevice_manage.so", RTLD_LAZY)` → 통합 라이브러리 핸들 로드
-  2. `dlsym(handle, "device_init_all")` → 전체 장치 초기화 함수 로드
-  3. `dlsym(handle, "led_*" / "buzzer_*" / "segment_*" / "sensor_*")` → 개별 장치 제어 함수 심볼 로드
-- 심볼 로딩 실패 시: 필수 장치 심볼(LED/BUZZER/7SEG/CDS)이 없으면 서버 실행을 중단합니다.
-- 서버 종료(SIGINT/SIGTERM 등) 시 `dlclose()` 로 통합 라이브러리 핸들을 정리합니다.
-### 클라이언트 명령 ↔ 서버 장치 제어 매핑
+### 4. 조도 센서 제어 (`wiringCDS`)
+**파일**: `src/wiringCDS.c`, `include/wiringCDS.h`
 
-서버의 `handle_command()` 에서 문자열 명령을 각 라이브러리 함수로 매핑합니다.
+**제공 함수**:
+- `int sensor_init(void)` - 센서 초기화
+- `int sensor_get_value(int *value)` - 센서 값 읽기 (0: 어둠, 1: 밝음)
 
-- `"LED_ON"`           → `led_on()`
-- `"LED_OFF"`          → `led_off()`
-- `"LED_BRIGHTNESS N"` → `led_set_brightness(N)`
-- `"BUZZER_ON"`        → `buzzer_on()`
-- `"BUZZER_OFF"`       → `buzzer_off()`
-- `"SEGMENT_DISPLAY N"`→ `segment_display(N)`
-- `"SEGMENT_STOP"`     → (간단히) `segment_display(0)`
-- `"SENSOR_ON"`        → `sensor_get_value()` 로 현재 값 1회 측정 후 서버 콘솔에 출력 (stub)
-- `"SENSOR_OFF"`       → 현재는 동작 없음 (추후 감시 쓰레드 종료 등 구현 예정)
+**특징**:
+- 디지털 입력 기반
+- 서버에서 스레드로 지속 모니터링
 
-## 실행 방법
+### 5. 통합 관리 (`device_manage`)
+**파일**: `src/device_manage.c`, `include/device_manage.h`
 
-### 서버 실행 (라즈베리파이 4)
-```bash
-./start_server.sh
-```
-### 서버 종료 (라즈베리파이 4)
-```bash
-  ./stop_server.sh
-```
-### 클라이언트 실행 (우분투 리눅스)
-```bash
-# 기본 (localhost:8080)
-./exec/client
+**제공 함수**:
+- `int device_init_all(void)` - 전체 장치 초기화
 
-# 서버 IP 지정
-./exec/client <서버_IP>
+**역할**:
+- `wiringPiSetupSys()`를 1회 호출하여 전체 장치 공통 초기화
+- 모든 장치 함수 시그니처를 한 헤더에 모아 서버에서 한 번에 `dlsym` 가능하도록 제공
 
-# 서버 IP와 포트 지정
-./exec/client <서버_IP> <포트>
-```
+## 서버 구조 (`server.c`)
 
+### 주요 기능
+1. **데몬 프로세스**
+   - `daemon(0, 0)` 함수 사용
+   - 실행 파일 기준 절대 경로 계산
+   - PID 파일 및 로그 파일 관리
 
-## 구현 상태
+2. **동적 라이브러리 로딩**
+   - `dlopen("exec/lib/libdevice_manage.so", RTLD_LAZY)`
+   - `dlsym`으로 각 장치 제어 함수 심볼 로드
+   - 서버 종료 시 `dlclose`로 정리
 
-### 1단계: 기본 인프라 구축
-- [x] 프로젝트 폴더 구조 생성
-- [x] 빌드 시스템 구성 (상위 + 하위 Makefile)
-- [x] TCP 서버/클라이언트 기본 통신 구현
-- [x] 기본 메뉴 UI 구현
-- [x] 시그널 처리 (SIGINT만 종료)
+3. **멀티 스레드**
+   - 클라이언트별 처리 스레드
+   - CDS 센서 모니터링 스레드
+   - 7세그먼트 카운트다운 스레드
+   - 퀴즈 처리 스레드
 
-### 2단계: 하드웨어 제어 라이브러리 개발
-- [x] 장치별 기능 구현 함수 작성  
-- [x] Shared Library 구조 설계 (`exec/lib/libdevice_manage.so`)
-- [x] LED 제어 라이브러리 (밝기 3단계 조절 포함)
-- [x] 부저 제어 라이브러리
-- [x] 조도 센서 라이브러리 (디지털 입력 기반 값 읽기)
-- [x] 7세그먼트 라이브러리 (숫자 표시 및 카운트다운 로직)
-- [x] `code/device_control/Makefile` 을 이용한 계층형 빌드 구성
+4. **클라이언트 명령 처리**
+   - `handle_command()` 함수에서 문자열 명령을 장치 제어 함수로 매핑
+   - 명령 예시:
+     - `"LED_ON"` → `led_on()`
+     - `"LED_OFF"` → `led_off()`
+     - `"LED_BRIGHTNESS N"` → `led_set_brightness(N)`
+     - `"BUZZER_ON"` → `buzzer_on()`
+     - `"BUZZER_OFF"` → `buzzer_off()`
+     - `"SEGMENT_DISPLAY N"` → `segment_display(N)`
+     - `"SEGMENT_COUNTDOWN N"` → 카운트다운 스레드 시작
+     - `"SEGMENT_STOP"` → 카운트다운 스레드 중지
+     - `"SENSOR_ON"` → CDS 센서 모니터링 스레드 시작
+     - `"SENSOR_OFF"` → CDS 센서 모니터링 스레드 중지
+     - `"QUIZ_START"` → 퀴즈 스레드 시작
+     - `"QUIZ_ANSWER N"` → 퀴즈 답변 처리
 
-### 3단계: 서버 구현
-- [x] 데몬 프로세스로 변환
-- [x] 멀티 프로세스/스레드 구조 -> 7segment , CDS
-- [x] 동적 라이브러리 로딩 (`dlopen/dlsym` 으로 장치별 `.so` 로딩)
-- [x] 클라이언트 명령 문자열과 장치 제어 함수 매핑 (기본 동작 완료)
+5. **브로드캐스트 기능**
+   - CDS 센서 값 변경 시 모든 클라이언트로 브로드캐스트
+   - 퀴즈 결과를 모든 클라이언트로 브로드캐스트
 
-### 4단계: 클라이언트 구현
-- [x] TCP 클라이언트 소켓 구현
-- [x] 메뉴 UI 구현
-- [x] 시그널 처리 (SIGINT만 종료)
-- [x] 클라이언트에서 CDS 센서 값 변경 시 확인 
-- [x] 서버와의 통신 프로토콜 기본 완성 (명령 문자열 정의 및 송신)
+## 클라이언트 구조 (`client.c`)
 
-### 5단계: 고급 기능 구현
-- [x] 조도 센서 자동 제어 (센서 감시 쓰레드 + LED 제어)
-- [x] 7세그먼트 카운트다운 기능 (segment_countdown 활용, 0에서 부저 울림)
-- [x] 멀티 프로세스/스레드를 통한 동시 장치 제어
+### 주요 기능
+1. **TCP 클라이언트**
+   - 서버에 연결
+   - 명령 전송 및 응답 수신
 
-### 6단계: 테스트 및 문서화
-- [ ] 실행 테스트 및 캡처
-- [ ] 개발 문서 작성
-- [ ] running.txt 작성
+2. **멀티 스레드**
+   - 메인 스레드: 메뉴 표시 및 명령 입력
+   - 서버 메시지 수신 스레드: 비동기 메시지 처리
+   - 서버 재연결 스레드: 연결 끊김 시 자동 재연결
 
+3. **시그널 처리**
+   - SIGINT(Ctrl+C)만 종료 처리
+   - 다른 시그널 무시
+
+4. **서버 재연결**
+   - 연결 끊김 감지 시 자동으로 재연결 스레드 시작
+   - 3초마다 재연결 시도
+   - 재연결 성공 시 자동으로 메뉴 복귀
+
+5. **입력 검증**
+   - 숫자가 아닌 입력 시 경고 메시지
+   - 유효하지 않은 메뉴 번호 입력 시 경고 메시지
+
+6. **메뉴 UI**
+   - ANSI 컬러 지원
+   - 실시간 상태 업데이트
+   - 퀴즈 모드 전환
+
+## 빌드 의존성
+
+### 서버
+- `wiringPi`: GPIO 제어
+- `pthread`: 멀티 스레드
+- `dl`: 동적 라이브러리 로딩
+
+### 클라이언트
+- `pthread`: 멀티 스레드
+
+### 장치 라이브러리
+- `wiringPi`: GPIO 제어
+- `pthread`: 멀티 스레드 (필요 시)
+
+## 실행 파일 위치
+
+빌드 후 실행 파일은 다음 위치에 생성됩니다:
+- 클라이언트: `exec/client`
+- 서버: `exec/server`
+- 장치 라이브러리: `exec/lib/libdevice_manage.so`
+
+## 로그 파일
+
+서버 데몬 로그는 다음 위치에 저장됩니다:
+- `exec/misc/device_server.log`
+
+## PID 파일
+
+서버 데몬 PID 파일은 다음 위치에 저장됩니다:
+- `exec/device_server.pid`

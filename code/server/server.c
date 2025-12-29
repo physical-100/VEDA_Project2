@@ -97,6 +97,7 @@ typedef int (*buzzer_off_t)(void);
 typedef int (*buzzer_warning_t)(void);
 typedef int (*buzzer_emergency_t)(void);
 typedef int (*buzzer_success_t)(void);
+typedef int (*buzzer_fail_t)(void);
 
 typedef int (*segment_init_t)(void);
 typedef int (*segment_display_t)(int);
@@ -119,8 +120,9 @@ typedef struct DeviceLibs {
     buzzer_on_t           buzzer_on;
     buzzer_off_t          buzzer_off;
     buzzer_warning_t      buzzer_warning;
-    buzzer_emergency_t    buzzer_emergency;
+    buzzer_emergency_t  buzzer_emergency;
     buzzer_success_t      buzzer_success;
+    buzzer_fail_t         buzzer_fail;
 
     segment_init_t        segment_init;
     segment_display_t     segment_display;
@@ -203,6 +205,10 @@ void signal_handler(int sig) {
     if (sig == SIGTERM || sig == SIGINT) {
         log_event("서버 종료 중...");
         
+        // 모든 연결된 클라이언트에게 서버 종료 메시지 브로드캐스트
+        broadcast_to_clients("SERVER_SHUTDOWN\n");
+        usleep(100000);  // 메시지 전송 시간 확보 (0.1초)
+        
         // CDS 모니터링 스레드 종료
         if (cds_thread_created) {
             cds_monitor_running = 0;
@@ -214,6 +220,13 @@ void signal_handler(int sig) {
             segment_countdown_running = 0;
             pthread_join(segment_countdown_thread, NULL);
         }
+        
+        // 퀴즈 스레드 종료
+        pthread_mutex_lock(&quiz_mutex);
+        if (quiz_running) {
+            quiz_running = 0;
+        }
+        pthread_mutex_unlock(&quiz_mutex);
         
         if (server_socket != -1) {
             close(server_socket);
@@ -278,6 +291,7 @@ static int load_symbols(DeviceLibs *libs) {
     libs->buzzer_warning   = (buzzer_warning_t)dlsym(libs->device_handle, "buzzer_warning");
     libs->buzzer_emergency = (buzzer_emergency_t)dlsym(libs->device_handle, "buzzer_emergency");
     libs->buzzer_success   = (buzzer_success_t)dlsym(libs->device_handle, "buzzer_success");
+    libs->buzzer_fail      = (buzzer_fail_t)dlsym(libs->device_handle, "buzzer_fail");
 
     // 7SEG 함수들
     libs->segment_init      = (segment_init_t)dlsym(libs->device_handle, "segment_init");
@@ -728,7 +742,10 @@ static void *quiz_thread_func(void *arg)
             g_libs.segment_display(n);
         }
 
-        // 부저 패턴: 5~3초는 warning, 2~1초는 emergency
+        // 부저 패턴: 5~3초는 warning, 2~1초는 emergency (각 0.2초)
+        struct timespec start_time, end_time;
+        clock_gettime(CLOCK_MONOTONIC, &start_time);
+        
         if (n > 2) {
             if (g_libs.buzzer_warning) {
                 g_libs.buzzer_warning();
@@ -742,7 +759,7 @@ static void *quiz_thread_func(void *arg)
                 g_libs.buzzer_emergency();
             } else if (g_libs.buzzer_on && g_libs.buzzer_off) {
                 g_libs.buzzer_on();
-                usleep(500000);
+                usleep(200000);
                 g_libs.buzzer_off();
             }
         }
@@ -752,10 +769,27 @@ static void *quiz_thread_func(void *arg)
         }
 
         if (n == 0) {
+            // 0초에 fail 소리 (낮은 쿠쿵)
+            if (g_libs.buzzer_fail) {
+                g_libs.buzzer_fail();
+            } else if (g_libs.buzzer_on && g_libs.buzzer_off) {
+                g_libs.buzzer_on();
+                usleep(500000);
+                g_libs.buzzer_off();
+            }
             break;
         }
 
-        sleep(1);   // 1초 간격
+        // 부저 소리 시간 측정 후 나머지 시간만큼만 대기 (정확히 1초)
+        clock_gettime(CLOCK_MONOTONIC, &end_time);
+        long elapsed_ns = (end_time.tv_sec - start_time.tv_sec) * 1000000000L + 
+                         (end_time.tv_nsec - start_time.tv_nsec);
+        long elapsed_us = elapsed_ns / 1000;
+        long remaining_us = 1000000 - elapsed_us;  // 1초(1000000us) - 경과 시간
+        
+        if (remaining_us > 0) {
+            usleep(remaining_us);
+        }
         n--;
     }
 
@@ -775,9 +809,9 @@ static void *quiz_thread_func(void *arg)
             usleep(500000);
             g_libs.buzzer_off();
         }
-        broadcast_to_clients("QUIZ RESULT: CORRECT\n");
+        //broadcast_to_clients("QUIZ RESULT: CORRECT\n");
     } else {
-        // 시간 초과
+        // 시간 초과: 폭탄 소리 후 즉시 메시지 전송 (클라이언트에서 0.2초 대기)
         broadcast_to_clients("QUIZ RESULT: TIMEOVER\n");
     }
 
