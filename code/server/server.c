@@ -27,14 +27,23 @@ static void add_client_to_list(int socket_fd);
 static void remove_client_from_list(int socket_fd);
 static void broadcast_to_clients(const char *message);
 
-// 로그 파일 경로는 실행 파일 디렉토리를 기준으로 동적으로 생성
+// 로그 파일 경로는 실행 파일 디렉토리의 부모 디렉토리를 기준으로 동적으로 생성
 static const char* get_log_file_path(void) {
     static char log_path[2048] = {0};
     
     if (log_path[0] == '\0') {
         char *exe_dir = get_exe_directory();
         if (exe_dir) {
-            snprintf(log_path, sizeof(log_path), "%s/misc/device_server.log", exe_dir);
+            // exe_dir이 exec/이므로, 부모 디렉토리의 misc/device_server.log로 설정
+            char *path_copy = strdup(exe_dir);
+            if (path_copy) {
+                char *parent_dir = dirname(path_copy);
+                snprintf(log_path, sizeof(log_path), "%s/misc/device_server.log", parent_dir);
+                free(path_copy);
+            } else {
+                // fallback: 현재 디렉토리 사용
+                snprintf(log_path, sizeof(log_path), "./misc/device_server.log");
+            }
         } else {
             // fallback: 현재 디렉토리 사용
             snprintf(log_path, sizeof(log_path), "./misc/device_server.log");

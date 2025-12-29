@@ -3,7 +3,7 @@
 
 # 실행 파일 경로 (절대 경로로 지정하는 것이 안전합니다)
 SERVER_EXE="./exec/server"
-LOG_FILE="./exec/misc/device_server.log"
+LOG_FILE="./misc/device_server.log"
 
 echo "=== 장치 제어 서버 시작 ==="
 

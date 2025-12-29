@@ -210,7 +210,7 @@ make clean
 ## 로그 파일
 
 서버 데몬 로그는 다음 위치에 저장됩니다:
-- `exec/misc/device_server.log`
+- `misc/device_server.log`
 
 ## PID 파일
 

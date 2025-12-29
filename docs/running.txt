@@ -1,0 +1,336 @@
+# TCP 원격 장치 제어 프로그램 실행 화면
+
+## 1. 클라이언트 실행 화면
+
+### 클라이언트 시작
+
+```bash
+$ ./exec/client <server addr>  <port>
+
+서버에 연결되었습니다: 127.0.0.1:8080  #local test
+
+```
+
+### 메인 메뉴
+```
+======================================
+       DEVICE CONTROL DASHBOARD       
+======================================
+ 1. LED ON        |  6. CDS SENSOR ON
+ 2. LED OFF       |  7. CDS SENSOR OFF
+ 3. LED LEVEL ON  |  8. 7SEGMENT DISPLAY
+ 4. BUZZER ON     |  9. 7SEGMENT COUNTDOWN
+ 5. BUZZER OFF    | 10. 7SEGMENT STOP
+--------------------------------------
+11. QUIZ (프로젝트 점수 맞추기)
+--------------------------------------
+ 0. Exit 프로그램 종료
+======================================
+Select: 
+```
+
+### 실행 예시 1: LED 제어
+```
+Select: 1
+[INFO] LED ON OK
+
+Select: 2
+[INFO] LED OFF OK
+
+Select: 3
+밝기 선택 (1:최저, 2:중간, 3:최대): 2
+[INFO] LED_BRIGHTNESS OK
+```
+
+### 실행 예시 2: 부저 제어
+```
+Select: 4
+[INFO] BUZZER ON OK
+
+Select: 5
+[INFO] BUZZER OFF OK
+```
+
+### 실행 예시 3: CDS 센서 제어
+```
+Select: 6
+[INFO] CDS SENSOR ON OK
+[EVENT] 🔔 CDS_SENSOR: 빛 없음 → LED ON
+[EVENT] 🔔 CDS_SENSOR: 빛 감지됨 → LED OFF
+[EVENT] 🔔 CDS_SENSOR: 빛 없음 → LED ON
+
+Select: 7
+[INFO] CDS SENSOR OFF OK
+```
+
+### 실행 예시 4: 7세그먼트 디스플레이
+```
+Select: 8
+표시할 숫자 입력 (0-9): 5
+[INFO] SEGMENT_DISPLAY OK
+
+Select: 9
+카운트다운 시작 숫자 입력 (0-9): 5
+[INFO] SEGMENT_COUNTDOWN OK
+[INFO] SEGMENT COUNTDOWN: 5
+[INFO] SEGMENT COUNTDOWN: 4
+[INFO] SEGMENT COUNTDOWN: 3
+[INFO] SEGMENT COUNTDOWN: 2
+[INFO] SEGMENT COUNTDOWN: 1
+[INFO] SEGMENT COUNTDOWN: 0
+[INFO] SEGMENT COUNTDOWN COMPLETE
+
+Select: 10
+[INFO] SEGMENT_STOP OK
+```
+
+### 실행 예시 5: 퀴즈 기능
+```
+Select: 11
+[INFO] QUIZ START: 이 프로젝트의 점수는? (5초 안에 100을 입력하세요!)
+answer: 50
+[INFO] QUIZ WRONG: 다시 입력하세요
+answer: 100
+[INFO] QUIZ CORRECT: 정답입니다!
+
+======================================
+       DEVICE CONTROL DASHBOARD       
+======================================
+ 1. LED ON        |  6. CDS SENSOR ON
+ 2. LED OFF       |  7. CDS SENSOR OFF
+ 3. LED LEVEL ON  |  8. 7SEGMENT DISPLAY
+ 4. BUZZER ON     |  9. 7SEGMENT COUNTDOWN
+ 5. BUZZER OFF    | 10. 7SEGMENT STOP
+--------------------------------------
+11. QUIZ (프로젝트 점수 맞추기)
+--------------------------------------
+ 0. Exit 프로그램 종료
+======================================
+Select: 
+```
+
+### 실행 예시 6: 퀴즈 시간 초과
+```
+Select: 11
+[INFO] QUIZ START: 이 프로젝트의 점수는? (5초 안에 100을 입력하세요!)
+answer: 50
+[INFO] QUIZ WRONG: 다시 입력하세요
+answer: 
+[INFO] QUIZ RESULT: TIMEOVER
+
+======================================
+       DEVICE CONTROL DASHBOARD       
+======================================
+ 1. LED ON        |  6. CDS SENSOR ON
+ 2. LED OFF       |  7. CDS SENSOR OFF
+ 3. LED LEVEL ON  |  8. 7SEGMENT DISPLAY
+ 4. BUZZER ON     |  9. 7SEGMENT COUNTDOWN
+ 5. BUZZER OFF    | 10. 7SEGMENT STOP
+--------------------------------------
+11. QUIZ (프로젝트 점수 맞추기)
+--------------------------------------
+ 0. Exit 프로그램 종료
+======================================
+Select: 
+```
+
+### 실행 예시 7: 잘못된 입력 처리
+```
+Select: abc
+숫자를 입력해주세요.
+Select: 99
+잘못된 입력입니다. 숫자를 입력해주세요.
+Select: 
+```
+
+### 실행 예시 8: 서버 연결 끊김 및 재연결
+```
+Select: 1
+
+서버와 연결이 되어있지 않습니다.
+서버와 연결이 끊어졌습니다. 서버와 연결 시도 중 ...
+종료하려면 Ctrl+C를 눌러주세요.
+
+서버 연결 실패: Connection refused
+서버 연결 실패: Connection refused
+.
+.
+.
+서버에 재연결되었습니다: 127.0.0.1:8080
+
+======================================
+       DEVICE CONTROL DASHBOARD       
+======================================
+ 1. LED ON        |  6. CDS SENSOR ON
+ 2. LED OFF       |  7. CDS SENSOR OFF
+ 3. LED LEVEL ON  |  8. 7SEGMENT DISPLAY
+ 4. BUZZER ON     |  9. 7SEGMENT COUNTDOWN
+ 5. BUZZER OFF    | 10. 7SEGMENT STOP
+--------------------------------------
+11. QUIZ (프로젝트 점수 맞추기)
+--------------------------------------
+ 0. Exit 프로그램 종료
+======================================
+Select: 
+```
+
+### 실행 예시 9: 프로그램 종료
+```
+Select: 0  or ^c
+프로그램을 종료합니다.
+```
+
+---
+
+## 2. 서버 실행 화면 (로그 파일)
+
+서버는 데몬 프로세스로 실행되므로 화면 출력이 없고, 모든 로그는 `misc/device_server.log` 파일에 기록됩니다.
+
+### 서버 시작 로그
+```
+[12:58:07] PID 파일 생성 완료: /home/physical-100/Veda_Project/exec/device_server.pid
+[12:58:07] 서버 데몬 프로세스 시작
+[12:58:07] CDS 센서 라이브러리 로드됨 (SENSOR_ON 명령으로 모니터링 시작 가능)
+[12:58:07] 서버가 포트 8080에서 대기 중...
+```
+
+### 클라이언트 연결 로그
+```
+[12:58:09] 클라이언트 연결됨: 127.0.0.1:51930 //local에서 연결 
+```
+
+### LED 제어 로그
+```
+[12:29:29] 수신된 메시지: LED_ON
+[12:29:31] 수신된 메시지: LED_OFF
+[12:29:32] 수신된 메시지: LED_ON
+[12:29:33] 수신된 메시지: LED_OFF
+[12:36:17] 수신된 메시지: LED_BRIGHTNESS 1
+```
+
+### 부저 제어 로그
+```
+[15:52:35] 수신된 메시지: BUZZER_ON
+[15:52:35] 수신된 메시지: BUZZER_OFF
+```
+
+### CDS 센서 모니터링 로그
+```
+[15:52:36] 수신된 메시지: SENSOR_ON
+[15:52:36] CDS 센서 모니터링 스레드 시작
+[15:52:36] [CDS 모니터] 빛 감지됨 → LED OFF
+[15:52:38] [CDS 모니터] 빛 없음 → LED ON
+[15:52:38] [CDS 모니터] 빛 감지됨 → LED OFF
+[15:52:38] [CDS 모니터] 빛 없음 → LED ON
+[15:52:44] [CDS 모니터] 빛 없음 → LED ON
+[15:52:44] [CDS 모니터] 빛 감지됨 → LED OFF
+[15:52:45] [CDS 모니터] 빛 없음 → LED ON
+[15:52:46] [CDS 모니터] 빛 감지됨 → LED OFF
+[15:52:52] 수신된 메시지: SENSOR_OFF
+[15:52:52] CDS 센서 모니터링 스레드 종료
+[15:52:52] CDS 센서 모니터링 완전히 종료됨
+```
+
+### 7세그먼트 디스플레이 로그
+```
+[15:52:37] 수신된 메시지: SEGMENT_DISPLAY 5
+[15:52:38] 수신된 메시지: SEGMENT_COUNTDOWN 5
+[15:52:39] [7SEG 카운트다운] 5
+[15:52:40] [7SEG 카운트다운] 4
+[15:52:41] [7SEG 카운트다운] 3
+[15:52:42] [7SEG 카운트다운] 2
+[15:52:43] [7SEG 카운트다운] 1
+[15:52:44] [7SEG 카운트다운] 0
+[15:52:44] 7SEG 카운트다운 완료 (부저 울림)
+[15:52:45] 수신된 메시지: SEGMENT_STOP
+[15:52:45] 7SEG 카운트다운 스레드 종료
+```
+
+### 퀴즈 기능 로그
+```
+[12:29:34] 수신된 메시지: QUIZ_START
+[12:29:34] 퀴즈 시작: 5초 카운트다운
+[12:29:36] 수신된 메시지: QUIZ_ANSWER 100
+[12:29:37] 퀴즈 카운트다운 스레드 종료
+```
+
+### 퀴즈 시간 초과 로그
+```
+[12:29:48] 수신된 메시지: QUIZ_START
+[12:29:48] 퀴즈 시작: 5초 카운트다운
+[12:29:54] 퀴즈 카운트다운 스레드 종료
+```
+
+### 클라이언트 연결 종료 로그
+```
+[12:29:22] 클라이언트 연결 종료: 127.0.0.1:44116
+[12:36:33] 클라이언트 연결 종료: 127.0.0.1:47310
+```
+
+### 서버 종료 로그
+```
+[12:30:05] 서버 종료 중...
+[12:30:05] 클라이언트 연결 종료: 127.0.0.1:39990
+```
+
+---
+
+## 3. 서버 실행 방법
+
+### 서버 시작 (데몬 프로세스)
+```bash
+$ ./start_server.sh
+서버가 데몬 프로세스로 시작되었습니다.
+PID: 12345
+```
+
+### 서버 상태 확인
+```bash
+$ ps aux | grep server
+physical-100  12345  0.0  0.1  12345  6789 ?        Ss   12:58   0:00 ./exec/server
+
+$ cat misc/device_server.log
+[12:58:07] 서버 데몬 프로세스 시작
+[12:58:07] CDS 센서 라이브러리 로드됨 (SENSOR_ON 명령으로 모니터링 시작 가능)
+[12:58:07] 서버가 포트 8080에서 대기 중...
+```
+
+### 서버 종료
+```bash
+$ ./stop_server.sh
+서버가 종료되었습니다.
+```
+
+---
+
+## 4. 주요 기능 동작 확인
+
+### 멀티 스레드 동작
+- 클라이언트별 처리 스레드: 여러 클라이언트가 동시에 접속 가능
+- CDS 센서 모니터링 스레드: 독립적으로 센서 값을 모니터링
+- 7세그먼트 카운트다운 스레드: 독립적으로 카운트다운 수행
+- 퀴즈 처리 스레드: 독립적으로 퀴즈 카운트다운 수행
+
+### 동적 라이브러리 로딩
+- 서버 시작 시 `libdevice_manage.so` 자동 로드
+- 장치 제어 함수 동적 호출
+
+### 데몬 프로세스
+- 백그라운드에서 실행
+- 로그 파일에 모든 동작 기록
+- PID 파일로 프로세스 관리
+
+### 시그널 처리
+- 클라이언트: SIGINT(Ctrl+C)만 종료 처리
+- 서버: SIGINT/SIGTERM에서 정상 종료 및 리소스 정리
+
+---
+
+## 5. 실행 환경
+
+- **서버**: 라즈베리파이 4 (데몬 프로세스)
+- **클라이언트**: 우분투 리눅스
+- **통신**: TCP/IP (포트 8080)
+- **로그 파일**: `misc/device_server.log`
+- **PID 파일**: `exec/device_server.pid`
+
